@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, 
-  deleteDoc
+  deleteDoc, deleteField 
 } from 'firebase/firestore';
 import { 
   Trash2, LogOut, Plus, 
@@ -111,7 +111,6 @@ export default function App() {
     if (!csvInput.trim()) return;
     const lines = csvInput.trim().split('\n');
     for (const [i, line] of lines.entries()) {
-      // Coach retiré du parsing CSV
       const [date, time, type, location, desc] = line.split(/[;,]/).map(p => p?.trim());
       if (!date) continue;
       const id = `sess_${date.replace(/[^0-9]/g, '')}_${Date.now()}_${i}`;
@@ -161,10 +160,18 @@ export default function App() {
     }
   };
 
+  // --- NOUVEAUTÉ : ANNULATION AU DOUBLE-CLIC ---
   const saveAttendance = async (sessId, status) => {
     if (!currentUserProfile) return;
+    
+    // On regarde ce que l'utilisateur avait répondu avant
+    const currentStatus = attendanceData[sessId]?.[currentUserProfile.id];
+    
+    // S'il reclique sur le même bouton, on supprime sa réponse (deleteField)
+    const newStatus = currentStatus === status ? deleteField() : status;
+    
     const ref = doc(db, 'artifacts', CLUB_ID, 'public', 'data', 'attendance', String(sessId));
-    await setDoc(ref, { [currentUserProfile.id]: status }, { merge: true });
+    await setDoc(ref, { [currentUserProfile.id]: newStatus }, { merge: true });
   };
 
   const formatDate = (dateStr) => {
@@ -377,16 +384,21 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
   const myStatus = currentUserProfile ? attendanceData[s.id]?.[currentUserProfile.id] : null;
   const isCancelled = s.isCancelled === true; 
   
-  // --- NOUVEAUTÉ : DÉTECTION AUTOMATIQUE DES COURSES ---
+  // NOUVEAUTÉ : Détection si l'utilisateur a besoin de répondre (pour griser la carte)
+  const needsResponse = currentUserProfile && !myStatus && !isCancelled;
+  
+  // Détection des courses/événements
   const typeStr = (s.type || '').toLowerCase();
   const isSpecialEvent = typeStr.includes('course') || typeStr.includes('événement') || typeStr.includes('evenement') || typeStr.includes('compét');
 
   return (
     <div className={`relative p-6 rounded-[2.5rem] border-l-[8px] transition-all mb-4 overflow-hidden
       ${isCancelled ? 'bg-slate-100 border-slate-300 grayscale opacity-80' : 
+        needsResponse ? 'bg-slate-200 border-slate-400 opacity-90' : 
         isSpecialEvent ? 'bg-gradient-to-br from-amber-50 to-white border-amber-500 shadow-md' : 
         'bg-white border-red-600 shadow-sm'}
       ${myStatus === 'present' && !isCancelled ? '!border-green-500 ring-2 ring-green-100' : ''}
+      ${myStatus === 'absent' && !isCancelled ? '!border-red-400' : ''}
     `}>
       
       {isCancelled && (
@@ -397,9 +409,8 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
 
       <div className="flex justify-between items-start mb-2 relative z-0">
         <div>
-          {/* --- NOUVEAUTÉ : BADGE TYPE PLUS GROS ET COLORÉ --- */}
           <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2
-            ${isCancelled ? 'bg-slate-200 text-slate-500' : 
+            ${isCancelled || needsResponse ? 'bg-slate-300 text-slate-600' : 
               isSpecialEvent ? 'bg-amber-100 text-amber-700' : 
               'bg-red-50 text-red-600'}
           `}>
@@ -409,14 +420,16 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
             {formatDate(s.date)}
           </h3>
         </div>
-        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black">{s.time}</div>
+        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black text-slate-700">{s.time}</div>
       </div>
 
       <p className="text-slate-500 text-[11px] font-bold mb-4 uppercase flex items-center gap-1 mt-1">📍 {s.location}</p>
       
       {!isCancelled && (
         <div className={`p-4 rounded-3xl text-sm font-medium mb-5 border italic
-          ${isSpecialEvent ? 'bg-amber-50/50 border-amber-100 text-amber-900' : 'bg-slate-50 border-slate-100 text-slate-700'}
+          ${needsResponse ? 'bg-slate-100 border-slate-300 text-slate-500' : 
+            isSpecialEvent ? 'bg-amber-50/50 border-amber-100 text-amber-900' : 
+            'bg-slate-50 border-slate-100 text-slate-700'}
         `}>
           {s.description || "Pas de détails."}
         </div>
@@ -424,7 +437,8 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
 
       {/* --- STATUT DES PRÉSENCES --- */}
       {!isCancelled && (
-        <div className={`space-y-4 mb-5 border-t pt-4 ${isSpecialEvent ? 'border-amber-100' : 'border-slate-100'}`}>
+        <div className={`space-y-4 mb-5 border-t pt-4 
+          ${needsResponse ? 'border-slate-300' : isSpecialEvent ? 'border-amber-100' : 'border-slate-100'}`}>
             
             {/* COMPTEURS GLOBAUX */}
             <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -432,19 +446,19 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
                     <span className="text-green-600 flex items-center gap-1"><Check size={12}/> {attendants.length} Présent(s)</span>
                     <span className="text-red-500 flex items-center gap-1"><XCircle size={12}/> {absentees.length} Absent(s)</span>
                 </div>
-                <span className="flex items-center gap-1 text-slate-300"><HelpCircle size={12}/> {noResponseCount} Non rep.</span>
+                <span className="flex items-center gap-1 text-slate-400"><HelpCircle size={12}/> {noResponseCount} Non rep.</span>
             </div>
 
             {/* LISTE DES PRÉSENTS */}
             <div>
                 <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    <Users size={12} className="text-green-600"/> Ils viennent :
+                    <Users size={12} className={needsResponse ? 'text-slate-400' : 'text-green-600'}/> Ils viennent :
                 </div>
                 <div className="flex flex-wrap gap-1 min-h-[10px]">
                     {attendants.length > 0 ? (
                         attendants.map(a => <span key={a.id} className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-green-100">{a.name}</span>)
                     ) : (
-                        <span className="text-[8px] text-slate-300 italic font-bold">Personne n'a encore confirmé.</span>
+                        <span className="text-[8px] text-slate-400 italic font-bold">Personne n'a encore confirmé.</span>
                     )}
                 </div>
             </div>
@@ -453,7 +467,7 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
             {absentees.length > 0 && (
                 <div>
                     <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-3">
-                        <UserMinus size={12} className="text-red-400"/> Ils ne viennent pas :
+                        <UserMinus size={12} className={needsResponse ? 'text-slate-400' : 'text-red-400'}/> Ils ne viennent pas :
                     </div>
                     <div className="flex flex-wrap gap-1">
                         {absentees.map(a => <span key={a.id} className="text-[8px] bg-red-50 text-red-500 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-red-100">{a.name}</span>)}
@@ -467,12 +481,12 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
         <div className="grid grid-cols-2 gap-3 mt-4">
           <button onClick={() => saveAttendance(s.id, 'present')} 
             className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 
-            ${myStatus === 'present' ? 'bg-green-600 text-white shadow-lg shadow-green-200' : 'bg-slate-100 text-slate-400 hover:bg-green-50'}`}>
+            ${myStatus === 'present' ? 'bg-green-600 text-white shadow-lg shadow-green-200' : 'bg-white border-2 border-slate-100 text-slate-400 hover:bg-green-50 hover:border-green-100 hover:text-green-600'}`}>
             <Check size={14}/> Je viens
           </button>
           <button onClick={() => saveAttendance(s.id, 'absent')} 
             className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95
-            ${myStatus === 'absent' ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-slate-100 text-slate-400 hover:bg-red-50'}`}>
+            ${myStatus === 'absent' ? 'bg-red-600 text-white shadow-lg shadow-red-200' : 'bg-white border-2 border-slate-100 text-slate-400 hover:bg-red-50 hover:border-red-100 hover:text-red-600'}`}>
             <XCircle size={14}/> Absent
           </button>
         </div>
