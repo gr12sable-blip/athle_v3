@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { 
   Trash2, LogOut, Plus, 
-  Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle
+  Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle, BarChart2
 } from 'lucide-react';
 
 // ==========================================
@@ -160,16 +160,11 @@ export default function App() {
     }
   };
 
-  // --- NOUVEAUTÉ : ANNULATION AU DOUBLE-CLIC ---
+  // Annulation au double-clic
   const saveAttendance = async (sessId, status) => {
     if (!currentUserProfile) return;
-    
-    // On regarde ce que l'utilisateur avait répondu avant
     const currentStatus = attendanceData[sessId]?.[currentUserProfile.id];
-    
-    // S'il reclique sur le même bouton, on supprime sa réponse (deleteField)
     const newStatus = currentStatus === status ? deleteField() : status;
-    
     const ref = doc(db, 'artifacts', CLUB_ID, 'public', 'data', 'attendance', String(sessId));
     await setDoc(ref, { [currentUserProfile.id]: newStatus }, { merge: true });
   };
@@ -212,7 +207,9 @@ export default function App() {
               </h2>
               {upcomingSessions.length === 0 && <p className="text-sm text-slate-400 italic">Aucune séance prévue.</p>}
               <div className="space-y-4">
-                {upcomingSessions.map(s => <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} />)}
+                {upcomingSessions.map(s => 
+                  <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} isAdminAuthenticated={isAdminAuthenticated} setEditingSession={setEditingSession} />
+                )}
               </div>
             </section>
 
@@ -222,7 +219,9 @@ export default function App() {
                   <History size={14}/> Historique
                 </h2>
                 <div className="space-y-4">
-                  {pastSessions.map(s => <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} />)}
+                  {pastSessions.map(s => 
+                    <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} isAdminAuthenticated={isAdminAuthenticated} setEditingSession={setEditingSession} />
+                  )}
                 </div>
               </section>
             )}
@@ -262,9 +261,38 @@ export default function App() {
                               placeholder="2026-02-12;18:30;Seuil;Stade;Détails..."/>
                     <button onClick={handleImport} className="w-full py-4 bg-red-600 text-white rounded-xl font-black uppercase text-[10px]">Publier le planning</button>
                 </div>
-                {/* Gérer les séances */}
+
+                {/* --- NOUVEAU : BILAN DES PRÉSENCES --- */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
-                    <h3 className="font-black text-[10px] uppercase mb-4 tracking-widest">Gérer les séances</h3>
+                    <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest flex items-center gap-2">
+                        <BarChart2 size={14}/> Bilan des Présences
+                    </h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                        {athletes.filter(a => a.name).sort((a,b) => a.name.localeCompare(b.name)).map(a => {
+                            let present = 0, absent = 0, noRep = 0;
+                            sessions.filter(s => !s.isCancelled).forEach(s => {
+                                const status = attendanceData[s.id]?.[a.id];
+                                if (status === 'present') present++;
+                                else if (status === 'absent') absent++;
+                                else noRep++;
+                            });
+                            return (
+                                <div key={a.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                    <span className="text-[10px] font-black uppercase italic truncate max-w-[120px]">{a.name}</span>
+                                    <div className="flex gap-1 text-[9px] font-bold">
+                                        <span className="bg-green-100 text-green-700 px-2 py-1.5 rounded-lg flex items-center gap-1" title="Présent(e)"><Check size={10}/> {present}</span>
+                                        <span className="bg-red-100 text-red-700 px-2 py-1.5 rounded-lg flex items-center gap-1" title="Absent(e)"><XCircle size={10}/> {absent}</span>
+                                        <span className="bg-slate-200 text-slate-500 px-2 py-1.5 rounded-lg flex items-center gap-1" title="Non répondu"><HelpCircle size={10}/> {noRep}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Gérer les séances (Vue Liste condensée) */}
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
+                    <h3 className="font-black text-[10px] uppercase mb-4 tracking-widest text-slate-400">Gérer les séances (Liste)</h3>
                     <div className="space-y-2 max-h-80 overflow-y-auto">
                         {[...upcomingSessions, ...pastSessions].map(s => (
                             <div key={s.id} className={`flex justify-between items-center p-3 rounded-xl border ${s.isCancelled ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-100'}`}>
@@ -281,6 +309,7 @@ export default function App() {
                         ))}
                     </div>
                 </div>
+
                 {/* Membres */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
                     <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">Gestion Groupe</h3>
@@ -371,8 +400,7 @@ export default function App() {
 }
 
 // COMPOSANT CARTE SÉANCE
-function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAttendance, formatDate }) {
-  // Calculs des présences
+function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAttendance, formatDate, isAdminAuthenticated, setEditingSession }) {
   const validAthletes = athletes.filter(ath => ath.name);
   const totalAthletes = validAthletes.length;
   
@@ -384,10 +412,7 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
   const myStatus = currentUserProfile ? attendanceData[s.id]?.[currentUserProfile.id] : null;
   const isCancelled = s.isCancelled === true; 
   
-  // NOUVEAUTÉ : Détection si l'utilisateur a besoin de répondre (pour griser la carte)
   const needsResponse = currentUserProfile && !myStatus && !isCancelled;
-  
-  // Détection des courses/événements
   const typeStr = (s.type || '').toLowerCase();
   const isSpecialEvent = typeStr.includes('course') || typeStr.includes('événement') || typeStr.includes('evenement') || typeStr.includes('compét');
 
@@ -420,7 +445,16 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
             {formatDate(s.date)}
           </h3>
         </div>
-        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black text-slate-700">{s.time}</div>
+        
+        {/* --- NOUVEAU : BOUTON D'ÉDITION POUR LE COACH --- */}
+        <div className="flex items-center gap-2">
+          {isAdminAuthenticated && (
+            <button onClick={() => setEditingSession(s)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors shadow-sm">
+              <Edit3 size={14}/>
+            </button>
+          )}
+          <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black text-slate-700">{s.time}</div>
+        </div>
       </div>
 
       <p className="text-slate-500 text-[11px] font-bold mb-4 uppercase flex items-center gap-1 mt-1">📍 {s.location}</p>
