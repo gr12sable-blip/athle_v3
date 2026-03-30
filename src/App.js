@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { 
   Trash2, LogOut, Plus, 
-  Check, XCircle, Ban, History, Calendar, Edit3, Users
+  Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle
 } from 'lucide-react';
 
 // ==========================================
@@ -111,11 +111,12 @@ export default function App() {
     if (!csvInput.trim()) return;
     const lines = csvInput.trim().split('\n');
     for (const [i, line] of lines.entries()) {
-      const [date, time, type, coach, location, desc] = line.split(/[;,]/).map(p => p?.trim());
+      // Coach retiré du parsing CSV
+      const [date, time, type, location, desc] = line.split(/[;,]/).map(p => p?.trim());
       if (!date) continue;
       const id = `sess_${date.replace(/[^0-9]/g, '')}_${Date.now()}_${i}`;
       await setDoc(doc(db, 'artifacts', CLUB_ID, 'public', 'data', 'sessions', id), {
-        date, time: time || "18:30", type: type || "Entraînement", coach: coach || "Club", location: location || "Stade", description: desc || "", isCancelled: false
+        date, time: time || "18:30", type: type || "Entraînement", location: location || "Stade", description: desc || "", isCancelled: false
       });
     }
     setCsvInput("");
@@ -251,7 +252,7 @@ export default function App() {
                     <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">Importer Séances (CSV)</h3>
                     <textarea value={csvInput} onChange={e => setCsvInput(e.target.value)} 
                               className="w-full h-24 p-4 bg-slate-50 rounded-xl text-[10px] mb-4 border-0 outline-none font-mono"
-                              placeholder="2026-02-12;18:30;Seuil;Coach;Stade;Détails..."/>
+                              placeholder="2026-02-12;18:30;Seuil;Stade;Détails..."/>
                     <button onClick={handleImport} className="w-full py-4 bg-red-600 text-white rounded-xl font-black uppercase text-[10px]">Publier le planning</button>
                 </div>
                 {/* Gérer les séances */}
@@ -364,59 +365,106 @@ export default function App() {
 
 // COMPOSANT CARTE SÉANCE
 function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAttendance, formatDate }) {
-  const attendants = athletes.filter(ath => attendanceData[s.id]?.[ath.id] === 'present' && ath.name);
+  // Calculs des présences
+  const validAthletes = athletes.filter(ath => ath.name);
+  const totalAthletes = validAthletes.length;
+  
+  const attendants = validAthletes.filter(ath => attendanceData[s.id]?.[ath.id] === 'present');
+  const absentees = validAthletes.filter(ath => attendanceData[s.id]?.[ath.id] === 'absent');
+  
+  const noResponseCount = totalAthletes - attendants.length - absentees.length;
+
   const myStatus = currentUserProfile ? attendanceData[s.id]?.[currentUserProfile.id] : null;
   const isCancelled = s.isCancelled === true; 
+  
+  // --- NOUVEAUTÉ : DÉTECTION AUTOMATIQUE DES COURSES ---
+  const typeStr = (s.type || '').toLowerCase();
+  const isSpecialEvent = typeStr.includes('course') || typeStr.includes('événement') || typeStr.includes('evenement') || typeStr.includes('compét');
 
   return (
     <div className={`relative p-6 rounded-[2.5rem] border-l-[8px] transition-all mb-4 overflow-hidden
-      ${isCancelled ? 'bg-slate-100 border-slate-300 grayscale opacity-80' : 'bg-white border-red-600 shadow-sm'}
-      ${myStatus === 'present' && !isCancelled ? '!border-green-500 ring-1 ring-green-100' : ''}
+      ${isCancelled ? 'bg-slate-100 border-slate-300 grayscale opacity-80' : 
+        isSpecialEvent ? 'bg-gradient-to-br from-amber-50 to-white border-amber-500 shadow-md' : 
+        'bg-white border-red-600 shadow-sm'}
+      ${myStatus === 'present' && !isCancelled ? '!border-green-500 ring-2 ring-green-100' : ''}
     `}>
       
       {isCancelled && (
         <div className="absolute top-0 right-0 bg-slate-800 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10">
-          Séance Annulée
+          Annulé
         </div>
       )}
 
       <div className="flex justify-between items-start mb-2 relative z-0">
         <div>
-          <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">{s.type}</span>
-          <h3 className={`text-xl font-black leading-tight mt-1 capitalize ${isCancelled ? 'line-through decoration-red-600 decoration-2 text-slate-500' : 'text-slate-900'}`}>
+          {/* --- NOUVEAUTÉ : BADGE TYPE PLUS GROS ET COLORÉ --- */}
+          <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2
+            ${isCancelled ? 'bg-slate-200 text-slate-500' : 
+              isSpecialEvent ? 'bg-amber-100 text-amber-700' : 
+              'bg-red-50 text-red-600'}
+          `}>
+            {s.type}
+          </span>
+          <h3 className={`text-xl font-black leading-tight capitalize ${isCancelled ? 'line-through decoration-red-600 decoration-2 text-slate-500' : 'text-slate-900'}`}>
             {formatDate(s.date)}
           </h3>
         </div>
-        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[9px] font-black">{s.time}</div>
+        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black">{s.time}</div>
       </div>
 
-      <p className="text-slate-400 text-[10px] font-black mb-4 uppercase italic flex items-center gap-1">📍 {s.location}</p>
+      <p className="text-slate-500 text-[11px] font-bold mb-4 uppercase flex items-center gap-1 mt-1">📍 {s.location}</p>
       
       {!isCancelled && (
-        <div className="bg-slate-50 p-4 rounded-3xl text-sm font-medium text-slate-700 mb-5 border border-slate-100 italic">
+        <div className={`p-4 rounded-3xl text-sm font-medium mb-5 border italic
+          ${isSpecialEvent ? 'bg-amber-50/50 border-amber-100 text-amber-900' : 'bg-slate-50 border-slate-100 text-slate-700'}
+        `}>
           {s.description || "Pas de détails."}
         </div>
       )}
 
-      {/* --- NOUVEAU DESIGN POUR LES PRÉSENTS --- */}
-      <div className="flex flex-col gap-2 mb-5">
-        {attendants.length > 0 && !isCancelled && (
-             <div className="flex items-center gap-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                 <Users size={12}/> Présent(e)s :
-             </div>
-        )}
-        <div className="flex flex-wrap gap-1 min-h-[10px]">
-            {attendants.length > 0 ? (
-                // Couleur changée ici : bg-slate-200 et text-slate-700 au lieu du rouge
-                attendants.map(a => <span key={a.id} className="text-[8px] bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight">{a.name}</span>)
-            ) : (
-                !isCancelled && <span className="text-[8px] text-slate-300 italic font-bold">Personne inscrit pour le moment</span>
+      {/* --- STATUT DES PRÉSENCES --- */}
+      {!isCancelled && (
+        <div className={`space-y-4 mb-5 border-t pt-4 ${isSpecialEvent ? 'border-amber-100' : 'border-slate-100'}`}>
+            
+            {/* COMPTEURS GLOBAUX */}
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <div className="flex gap-4">
+                    <span className="text-green-600 flex items-center gap-1"><Check size={12}/> {attendants.length} Présent(s)</span>
+                    <span className="text-red-500 flex items-center gap-1"><XCircle size={12}/> {absentees.length} Absent(s)</span>
+                </div>
+                <span className="flex items-center gap-1 text-slate-300"><HelpCircle size={12}/> {noResponseCount} Non rep.</span>
+            </div>
+
+            {/* LISTE DES PRÉSENTS */}
+            <div>
+                <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    <Users size={12} className="text-green-600"/> Ils viennent :
+                </div>
+                <div className="flex flex-wrap gap-1 min-h-[10px]">
+                    {attendants.length > 0 ? (
+                        attendants.map(a => <span key={a.id} className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-green-100">{a.name}</span>)
+                    ) : (
+                        <span className="text-[8px] text-slate-300 italic font-bold">Personne n'a encore confirmé.</span>
+                    )}
+                </div>
+            </div>
+
+            {/* LISTE DES ABSENTS */}
+            {absentees.length > 0 && (
+                <div>
+                    <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-3">
+                        <UserMinus size={12} className="text-red-400"/> Ils ne viennent pas :
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {absentees.map(a => <span key={a.id} className="text-[8px] bg-red-50 text-red-500 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-red-100">{a.name}</span>)}
+                    </div>
+                </div>
             )}
         </div>
-      </div>
+      )}
 
       {currentUserProfile && !isCancelled ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 mt-4">
           <button onClick={() => saveAttendance(s.id, 'present')} 
             className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 
             ${myStatus === 'present' ? 'bg-green-600 text-white shadow-lg shadow-green-200' : 'bg-slate-100 text-slate-400 hover:bg-green-50'}`}>
