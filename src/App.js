@@ -9,6 +9,7 @@ import {
   Trash2, LogOut, Plus, 
   Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle, BarChart2, ChevronDown, ChevronUp
 } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 // ==========================================
 // 1. INJECTION DU DESIGN (Rouge SGS)
@@ -407,6 +408,7 @@ export default function App() {
           <button onClick={() => { localStorage.removeItem('sgs_user_profile'); setCurrentUserProfile(null); setView('profiles'); }} className="text-white/30 hover:text-white transition-colors"><LogOut size={14}/></button>
         </div>
       )}
+      <Analytics />
     </div>
   );
 }
