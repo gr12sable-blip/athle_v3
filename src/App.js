@@ -464,7 +464,7 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
               <Edit3 size={14}/>
             </button>
           )}
-          <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[10px] font-black text-slate-700">{s.time}</div>
+          <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[12px] font-black text-slate-700">{s.time}</div>
         </div>
       </div>
 
