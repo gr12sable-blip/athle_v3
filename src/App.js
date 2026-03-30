@@ -7,7 +7,7 @@ import {
 } from 'firebase/firestore';
 import { 
   Trash2, LogOut, Plus, 
-  Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle, BarChart2
+  Check, XCircle, Ban, History, Calendar, Edit3, Users, UserMinus, HelpCircle, BarChart2, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 // ==========================================
@@ -42,6 +42,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('planning');
   const [loading, setLoading] = useState(true);
+  
+  // NOUVEAU : État pour cacher/montrer l'historique
+  const [showHistory, setShowHistory] = useState(false);
   
   // Données
   const [sessions, setSessions] = useState([]);
@@ -160,7 +163,6 @@ export default function App() {
     }
   };
 
-  // Annulation au double-clic
   const saveAttendance = async (sessId, status) => {
     if (!currentUserProfile) return;
     const currentStatus = attendanceData[sessId]?.[currentUserProfile.id];
@@ -213,16 +215,26 @@ export default function App() {
               </div>
             </section>
 
+            {/* BOUTON DÉROULANT HISTORIQUE */}
             {pastSessions.length > 0 && (
-              <section className="opacity-60 grayscale-[0.5]">
-                <h2 className="text-[10px] font-black uppercase text-slate-400 mb-4 flex items-center gap-2 mt-8 border-t pt-8">
-                  <History size={14}/> Historique
-                </h2>
-                <div className="space-y-4">
-                  {pastSessions.map(s => 
-                    <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} isAdminAuthenticated={isAdminAuthenticated} setEditingSession={setEditingSession} />
-                  )}
-                </div>
+              <section className="mt-8 border-t pt-8">
+                <button 
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:bg-slate-100 transition-colors"
+                >
+                  <h2 className="text-[10px] font-black uppercase flex items-center gap-2">
+                    <History size={14}/> Historique des séances ({pastSessions.length})
+                  </h2>
+                  {showHistory ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                </button>
+                
+                {showHistory && (
+                  <div className="space-y-4 mt-4 opacity-70 grayscale-[0.3] animate-in slide-in-from-top-4 duration-300">
+                    {pastSessions.map(s => 
+                      <SessionCard key={s.id} s={s} athletes={athletes} attendanceData={attendanceData} currentUserProfile={currentUserProfile} saveAttendance={saveAttendance} formatDate={formatDate} isAdminAuthenticated={isAdminAuthenticated} setEditingSession={setEditingSession} />
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </div>
@@ -262,7 +274,7 @@ export default function App() {
                     <button onClick={handleImport} className="w-full py-4 bg-red-600 text-white rounded-xl font-black uppercase text-[10px]">Publier le planning</button>
                 </div>
 
-                {/* --- NOUVEAU : BILAN DES PRÉSENCES --- */}
+                {/* Bilan des présences */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
                     <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest flex items-center gap-2">
                         <BarChart2 size={14}/> Bilan des Présences
@@ -433,7 +445,7 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
       )}
 
       <div className="flex justify-between items-start mb-2 relative z-0">
-        <div>
+        <div className="flex-1 pr-2">
           <span className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2
             ${isCancelled || needsResponse ? 'bg-slate-300 text-slate-600' : 
               isSpecialEvent ? 'bg-amber-100 text-amber-700' : 
@@ -446,7 +458,6 @@ function SessionCard({ s, athletes, attendanceData, currentUserProfile, saveAtte
           </h3>
         </div>
         
-        {/* --- NOUVEAU : BOUTON D'ÉDITION POUR LE COACH --- */}
         <div className="flex items-center gap-2">
           {isAdminAuthenticated && (
             <button onClick={() => setEditingSession(s)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors shadow-sm">
