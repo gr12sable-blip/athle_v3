@@ -27,7 +27,11 @@ import {
   ChevronDown,
   ChevronUp,
   MessageSquare,
-} from "lucide-react"; // NOUVEAU: Import de MessageSquare
+  Activity,
+  Bandage,
+  Flame,
+  X,
+} from "lucide-react";
 
 // ==========================================
 // 1. INJECTION DU DESIGN (Rouge SGS)
@@ -52,7 +56,6 @@ const firebaseConfig = {
 
 const CLUB_ID = "dream-team-athle-official-v1";
 
-// Initialisation
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -61,38 +64,37 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState("planning");
   const [loading, setLoading] = useState(true);
-
   const [showHistory, setShowHistory] = useState(false);
 
-  // Données
   const [sessions, setSessions] = useState([]);
   const [athletes, setAthletes] = useState([]);
   const [attendanceData, setAttendanceData] = useState({});
-  const [commentsData, setCommentsData] = useState({}); // NOUVEAU: État pour les commentaires
+  const [commentsData, setCommentsData] = useState({});
+  const [globalStatuses, setGlobalStatuses] = useState({});
 
-  // Profil Utilisateur
   const [currentUserProfile, setCurrentUserProfile] = useState(() => {
     const saved = localStorage.getItem("sgs_user_profile");
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Admin
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [csvInput, setCsvInput] = useState("");
   const [newAthleteName, setNewAthleteName] = useState("");
-
-  // États de modification
   const [editingSession, setEditingSession] = useState(null);
   const [editingAthlete, setEditingAthlete] = useState(null);
 
-  // --- Connexion ---
+  const [editingStatus, setEditingStatus] = useState(false);
+  const [statusInput, setStatusInput] = useState({
+    type: "blessure",
+    text: "",
+  });
+
   useEffect(() => {
     signInAnonymously(auth).catch((err) => console.error("Erreur Auth:", err));
     const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsubAuth();
   }, []);
 
-  // --- Invit au démarrage ---
   useEffect(() => {
     if (
       !loading &&
@@ -104,7 +106,6 @@ export default function App() {
     }
   }, [loading, currentUserProfile, view, athletes.length]);
 
-  // --- Synchronisation Firestore ---
   useEffect(() => {
     if (!user) return;
     setLoading(true);
@@ -135,7 +136,6 @@ export default function App() {
       }
     );
 
-    // NOUVEAU: Snapshot pour les commentaires
     const unsubComments = onSnapshot(
       collection(db, "artifacts", CLUB_ID, "public", "data", "comments"),
       (snap) => {
@@ -147,19 +147,56 @@ export default function App() {
       }
     );
 
+    const unsubStatuses = onSnapshot(
+      collection(db, "artifacts", CLUB_ID, "public", "data", "statuses"),
+      (snap) => {
+        const statMap = {};
+        snap.docs.forEach((d) => {
+          statMap[d.id] = d.data();
+        });
+        setGlobalStatuses(statMap);
+      }
+    );
+
     return () => {
       unsubSessions();
       unsubMembers();
       unsubAttendance();
       unsubComments();
+      unsubStatuses();
     };
   }, [user]);
 
-  // --- Actions ---
   const saveProfile = (athlete) => {
     setCurrentUserProfile(athlete);
     localStorage.setItem("sgs_user_profile", JSON.stringify(athlete));
     setView("planning");
+  };
+
+  const saveComment = async (sessId, text) => {
+    if (!currentUserProfile) return;
+    const ref = doc(
+      db,
+      "artifacts",
+      CLUB_ID,
+      "public",
+      "data",
+      "comments",
+      String(sessId)
+    );
+    if (!text || !text.trim()) {
+      await setDoc(
+        ref,
+        { [currentUserProfile.id]: deleteField() },
+        { merge: true }
+      );
+    } else {
+      await setDoc(
+        ref,
+        { [currentUserProfile.id]: text.trim() },
+        { merge: true }
+      );
+    }
   };
 
   const handleImport = async () => {
@@ -223,58 +260,50 @@ export default function App() {
     setEditingAthlete(null);
   };
 
-  const deleteSession = async (id) => {
-    if (window.confirm("Supprimer définitivement cette séance ?")) {
-      await deleteDoc(
-        doc(db, "artifacts", CLUB_ID, "public", "data", "sessions", id)
-      );
-    }
-  };
-
-  const toggleCancelSession = async (id, currentStatus) => {
-    await setDoc(
-      doc(db, "artifacts", CLUB_ID, "public", "data", "sessions", id),
-      { isCancelled: !currentStatus },
-      { merge: true }
-    );
-  };
-
   const addAthlete = async () => {
     if (!newAthleteName.trim()) return;
-    const id = `ath_${Date.now()}`;
     await setDoc(
-      doc(db, "artifacts", CLUB_ID, "public", "data", "members", id),
+      doc(
+        db,
+        "artifacts",
+        CLUB_ID,
+        "public",
+        "data",
+        "members",
+        `ath_${Date.now()}`
+      ),
       { name: newAthleteName }
     );
     setNewAthleteName("");
   };
 
   const deleteAthlete = async (id) => {
-    if (window.confirm("Supprimer ce membre ?")) {
+    if (window.confirm("Supprimer ce membre ?"))
       await deleteDoc(
         doc(db, "artifacts", CLUB_ID, "public", "data", "members", id)
       );
-    }
   };
 
   const saveAttendance = async (sessId, status) => {
     if (!currentUserProfile) return;
     const currentStatus = attendanceData[sessId]?.[currentUserProfile.id];
     const newStatus = currentStatus === status ? deleteField() : status;
-    const ref = doc(
-      db,
-      "artifacts",
-      CLUB_ID,
-      "public",
-      "data",
-      "attendance",
-      String(sessId)
+    await setDoc(
+      doc(
+        db,
+        "artifacts",
+        CLUB_ID,
+        "public",
+        "data",
+        "attendance",
+        String(sessId)
+      ),
+      { [currentUserProfile.id]: newStatus },
+      { merge: true }
     );
-    await setDoc(ref, { [currentUserProfile.id]: newStatus }, { merge: true });
   };
 
-  // NOUVEAU: Fonction pour sauvegarder un commentaire
-  const saveComment = async (sessId, text) => {
+  const saveGlobalStatus = async () => {
     if (!currentUserProfile) return;
     const ref = doc(
       db,
@@ -282,22 +311,31 @@ export default function App() {
       CLUB_ID,
       "public",
       "data",
-      "comments",
-      String(sessId)
+      "statuses",
+      currentUserProfile.id
     );
-    if (!text || !text.trim()) {
-      await setDoc(
-        ref,
-        { [currentUserProfile.id]: deleteField() },
-        { merge: true }
-      );
-    } else {
-      await setDoc(
-        ref,
-        { [currentUserProfile.id]: text.trim() },
-        { merge: true }
-      );
-    }
+    await setDoc(ref, {
+      type: statusInput.type,
+      text: statusInput.text.trim() || "",
+      updatedAt: Date.now(),
+    });
+    setEditingStatus(false);
+  };
+
+  const removeGlobalStatus = async () => {
+    if (!currentUserProfile) return;
+    await deleteDoc(
+      doc(
+        db,
+        "artifacts",
+        CLUB_ID,
+        "public",
+        "data",
+        "statuses",
+        currentUserProfile.id
+      )
+    );
+    setEditingStatus(false);
   };
 
   const formatDate = (dateStr) => {
@@ -313,7 +351,6 @@ export default function App() {
     }
   };
 
-  // --- Tri ---
   const today = new Date().toISOString().split("T")[0];
   const upcomingSessions = sessions
     .filter((s) => s.date >= today)
@@ -321,6 +358,14 @@ export default function App() {
   const pastSessions = sessions
     .filter((s) => s.date < today)
     .sort((a, b) => b.date.localeCompare(a.date));
+
+  const activeStatuses = Object.entries(globalStatuses)
+    .filter(([id, data]) => athletes.find((a) => a.id === id))
+    .map(([id, data]) => ({
+      id,
+      name: athletes.find((a) => a.id === id).name,
+      ...data,
+    }));
 
   if (loading)
     return (
@@ -330,43 +375,78 @@ export default function App() {
     );
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] pb-24 font-sans text-slate-900">
-      {/* HEADER */}
-      <header className="bg-white border-b sticky top-0 z-40 px-4 h-16 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="bg-red-600 p-2 rounded-lg text-white font-black italic shadow-md text-xs">
-            SGS
+    <div className="min-h-screen bg-[#FDFDFD] pb-32 font-sans text-slate-900">
+      <header className="bg-white border-b sticky top-0 z-40 shadow-sm">
+        <div className="px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-red-600 p-2 rounded-lg text-white font-black italic shadow-md text-xs">
+              SGS
+            </div>
+            <h1 className="font-black italic tracking-tighter uppercase text-sm">
+              ATHLÉ
+            </h1>
           </div>
-          <h1 className="font-black italic tracking-tighter uppercase text-sm">
-            ATHLÉ
-          </h1>
+          <nav className="flex bg-slate-100 p-1 rounded-xl text-[10px] font-black">
+            <button
+              onClick={() => setView("planning")}
+              className={`px-4 py-2 rounded-lg transition-all ${
+                view === "planning"
+                  ? "bg-white shadow-sm text-red-600"
+                  : "text-slate-400"
+              }`}
+            >
+              PLANNING
+            </button>
+            <button
+              onClick={() => setView("admin")}
+              className={`px-4 py-2 rounded-lg transition-all ${
+                view === "admin"
+                  ? "bg-white shadow-sm text-red-600"
+                  : "text-slate-400"
+              }`}
+            >
+              COACH
+            </button>
+          </nav>
         </div>
-        <nav className="flex bg-slate-100 p-1 rounded-xl text-[10px] font-black">
-          <button
-            onClick={() => setView("planning")}
-            className={`px-4 py-2 rounded-lg transition-all ${
-              view === "planning"
-                ? "bg-white shadow-sm text-red-600"
-                : "text-slate-400"
-            }`}
-          >
-            PLANNING
-          </button>
-          <button
-            onClick={() => setView("admin")}
-            className={`px-4 py-2 rounded-lg transition-all ${
-              view === "admin"
-                ? "bg-white shadow-sm text-red-600"
-                : "text-slate-400"
-            }`}
-          >
-            COACH
-          </button>
-        </nav>
+
+        {activeStatuses.length > 0 && (
+          <div className="bg-slate-900 border-t border-slate-800 p-3 overflow-x-auto whitespace-nowrap flex gap-3 hide-scrollbar shadow-inner">
+            <div className="flex items-center gap-1 text-[9px] font-black uppercase text-slate-500 mr-2 tracking-widest">
+              <Activity size={12} /> Actu Groupe
+            </div>
+            {activeStatuses.map((s) => (
+              <div
+                key={s.id}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight border
+                ${
+                  s.type === "blessure"
+                    ? "bg-red-950/50 text-red-400 border-red-900/50"
+                    : "bg-indigo-950/50 text-indigo-300 border-indigo-900/50"
+                }
+              `}
+              >
+                {s.type === "blessure" ? (
+                  <Bandage size={12} />
+                ) : (
+                  <Flame size={12} />
+                )}
+                <span>
+                  {s.name}
+                  {s.text && (
+                    <span className="font-medium normal-case text-slate-300">
+                      {" "}
+                      : {s.text}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </header>
 
       <main className="max-w-xl mx-auto p-4 pt-6">
-        {/* VUE PLANNING */}
         {view === "planning" && (
           <div className="space-y-8">
             <section>
@@ -397,7 +477,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* BOUTON DÉROULANT HISTORIQUE */}
             {pastSessions.length > 0 && (
               <section className="mt-8 border-t pt-8">
                 <button
@@ -414,7 +493,6 @@ export default function App() {
                     <ChevronDown size={16} />
                   )}
                 </button>
-
                 {showHistory && (
                   <div className="space-y-4 mt-4 opacity-70 grayscale-[0.3] animate-in slide-in-from-top-4 duration-300">
                     {pastSessions.map((s) => (
@@ -439,7 +517,6 @@ export default function App() {
           </div>
         )}
 
-        {/* VUE PROFILS */}
         {view === "profiles" && (
           <div className="max-w-md mx-auto text-center py-10">
             <h2 className="text-3xl font-black italic mb-2 uppercase text-red-600">
@@ -462,13 +539,9 @@ export default function App() {
                   </button>
                 ))}
             </div>
-            <p className="mt-8 text-[9px] text-slate-400">
-              Tu ne trouves pas ton nom ? Demande au coach.
-            </p>
           </div>
         )}
 
-        {/* VUE COACH */}
         {view === "admin" && (
           <div className="space-y-6">
             {!isAdminAuthenticated ? (
@@ -487,7 +560,6 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-6 pb-20">
-                {/* Importer */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
                   <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">
                     Importer Séances (CSV)
@@ -506,7 +578,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Bilan des présences */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
                   <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest flex items-center gap-2">
                     <BarChart2 size={14} /> Bilan des Présences
@@ -536,22 +607,13 @@ export default function App() {
                               {a.name}
                             </span>
                             <div className="flex gap-1 text-[9px] font-bold">
-                              <span
-                                className="bg-green-100 text-green-700 px-2 py-1.5 rounded-lg flex items-center gap-1"
-                                title="Présent(e)"
-                              >
+                              <span className="bg-green-100 text-green-700 px-2 py-1.5 rounded-lg flex items-center gap-1">
                                 <Check size={10} /> {present}
                               </span>
-                              <span
-                                className="bg-red-100 text-red-700 px-2 py-1.5 rounded-lg flex items-center gap-1"
-                                title="Absent(e)"
-                              >
+                              <span className="bg-red-100 text-red-700 px-2 py-1.5 rounded-lg flex items-center gap-1">
                                 <XCircle size={10} /> {absent}
                               </span>
-                              <span
-                                className="bg-slate-200 text-slate-500 px-2 py-1.5 rounded-lg flex items-center gap-1"
-                                title="Non répondu"
-                              >
+                              <span className="bg-slate-200 text-slate-500 px-2 py-1.5 rounded-lg flex items-center gap-1">
                                 <HelpCircle size={10} /> {noRep}
                               </span>
                             </div>
@@ -561,69 +623,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Gérer les séances */}
-                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
-                  <h3 className="font-black text-[10px] uppercase mb-4 tracking-widest text-slate-400">
-                    Gérer les séances (Liste)
-                  </h3>
-                  <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {[...upcomingSessions, ...pastSessions].map((s) => (
-                      <div
-                        key={s.id}
-                        className={`flex justify-between items-center p-3 rounded-xl border ${
-                          s.isCancelled
-                            ? "bg-slate-100 border-slate-200"
-                            : "bg-white border-slate-100"
-                        }`}
-                      >
-                        <div className="flex-1">
-                          <span
-                            className={`text-[10px] font-bold block ${
-                              s.isCancelled ? "line-through text-slate-400" : ""
-                            }`}
-                          >
-                            {s.date}
-                          </span>
-                          <span className="text-[9px] uppercase text-slate-400">
-                            {s.type}
-                          </span>
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => setEditingSession(s)}
-                            className="p-2 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"
-                          >
-                            <Edit3 size={14} />
-                          </button>
-                          <button
-                            onClick={() =>
-                              toggleCancelSession(s.id, s.isCancelled)
-                            }
-                            className={`p-2 rounded-lg ${
-                              s.isCancelled
-                                ? "text-green-600 bg-green-50"
-                                : "text-orange-500 bg-orange-50"
-                            }`}
-                          >
-                            {s.isCancelled ? (
-                              <Check size={14} />
-                            ) : (
-                              <Ban size={14} />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => deleteSession(s.id)}
-                            className="text-red-500 bg-red-50 p-2 rounded-lg"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Membres */}
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
                   <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">
                     Gestion Groupe
@@ -682,7 +681,7 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL SÉANCE */}
+      {/* MODALES SÉANCE / ATHLÈTE */}
       {editingSession && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -699,7 +698,7 @@ export default function App() {
                 onChange={(e) =>
                   setEditingSession({ ...editingSession, date: e.target.value })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
+                className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
               />
             </div>
             <div className="flex gap-2">
@@ -716,7 +715,7 @@ export default function App() {
                       time: e.target.value,
                     })
                   }
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
+                  className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
                 />
               </div>
               <div className="flex-1 space-y-1">
@@ -732,7 +731,7 @@ export default function App() {
                       location: e.target.value,
                     })
                   }
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
+                  className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
                 />
               </div>
             </div>
@@ -746,7 +745,7 @@ export default function App() {
                 onChange={(e) =>
                   setEditingSession({ ...editingSession, type: e.target.value })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
+                className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -761,7 +760,7 @@ export default function App() {
                     description: e.target.value,
                   })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl text-sm h-24 border-0 outline-none italic"
+                className="w-full p-3 bg-slate-50 rounded-xl text-sm h-24 italic"
               />
             </div>
             <div className="flex gap-2 pt-2">
@@ -782,7 +781,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL ATHLÈTE */}
       {editingAthlete && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -796,7 +794,7 @@ export default function App() {
                 onChange={(e) =>
                   setEditingAthlete({ ...editingAthlete, name: e.target.value })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm text-center"
+                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 text-sm text-center"
               />
             </div>
             <div className="flex gap-2 pt-2">
@@ -817,12 +815,109 @@ export default function App() {
         </div>
       )}
 
-      {/* BARRE PROFIL EN BAS */}
+      {editingStatus && currentUserProfile && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <h3 className="font-black uppercase text-red-600 text-xs tracking-widest text-center mb-4">
+              Mon Statut Actuel
+            </h3>
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() =>
+                  setStatusInput({ ...statusInput, type: "blessure" })
+                }
+                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  statusInput.type === "blessure"
+                    ? "border-red-500 bg-red-50 text-red-600"
+                    : "border-slate-100 text-slate-400 hover:bg-slate-50"
+                }`}
+              >
+                <Bandage size={20} />{" "}
+                <span className="text-[10px] font-black uppercase">
+                  A l'infirmerie
+                </span>
+              </button>
+              <button
+                onClick={() =>
+                  setStatusInput({ ...statusInput, type: "prepa" })
+                }
+                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                  statusInput.type === "prepa"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-600"
+                    : "border-slate-100 text-slate-400 hover:bg-slate-50"
+                }`}
+              >
+                <Flame size={20} />{" "}
+                <span className="text-[10px] font-black uppercase">
+                  En prépa
+                </span>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
+                Précision (Facultatif)
+              </label>
+              <input
+                type="text"
+                value={statusInput.text}
+                onChange={(e) =>
+                  setStatusInput({ ...statusInput, text: e.target.value })
+                }
+                placeholder="ex: Entorse, Marathon de Paris..."
+                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={saveGlobalStatus}
+                className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black uppercase text-[10px]"
+              >
+                Valider
+              </button>
+              <button
+                onClick={() => setEditingStatus(false)}
+                className="bg-slate-100 p-3 rounded-xl text-slate-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {globalStatuses[currentUserProfile.id] && (
+              <button
+                onClick={removeGlobalStatus}
+                className="w-full mt-2 py-3 rounded-xl font-black uppercase text-[10px] text-red-500 bg-red-50"
+              >
+                Je suis de retour / En forme
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {currentUserProfile && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-2xl flex items-center gap-4 shadow-2xl z-40 border border-white/10">
-          <span className="text-[10px] font-black uppercase italic tracking-wider">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-2xl flex items-center gap-4 shadow-2xl z-40 border border-white/10 w-max max-w-[90vw]">
+          <span className="text-[10px] font-black uppercase italic tracking-wider truncate">
             {currentUserProfile.name}
           </span>
+          <div className="w-px h-4 bg-white/20"></div>
+          <button
+            onClick={() => {
+              const current = globalStatuses[currentUserProfile.id];
+              setStatusInput(
+                current
+                  ? { type: current.type, text: current.text }
+                  : { type: "blessure", text: "" }
+              );
+              setEditingStatus(true);
+            }}
+            className="text-[10px] font-bold text-slate-300 hover:text-white uppercase flex items-center gap-1"
+          >
+            <Activity size={12} /> Mon Statut
+          </button>
+          <div className="w-px h-4 bg-white/20"></div>
           <button
             onClick={() => {
               localStorage.removeItem("sgs_user_profile");
@@ -839,7 +934,6 @@ export default function App() {
   );
 }
 
-// COMPOSANT CARTE SÉANCE
 function SessionCard({
   s,
   athletes,
@@ -853,64 +947,50 @@ function SessionCard({
   setEditingSession,
 }) {
   const validAthletes = athletes.filter((ath) => ath.name);
-  const totalAthletes = validAthletes.length;
-
   const attendants = validAthletes.filter(
     (ath) => attendanceData[s.id]?.[ath.id] === "present"
   );
   const absentees = validAthletes.filter(
     (ath) => attendanceData[s.id]?.[ath.id] === "absent"
   );
-
-  const noResponseCount = totalAthletes - attendants.length - absentees.length;
-
   const myStatus = currentUserProfile
     ? attendanceData[s.id]?.[currentUserProfile.id]
     : null;
   const isCancelled = s.isCancelled === true;
 
-  const needsResponse = currentUserProfile && !myStatus && !isCancelled;
-  const typeStr = (s.type || "").toLowerCase();
-  const isSpecialEvent =
-    typeStr.includes("course") ||
-    typeStr.includes("événement") ||
-    typeStr.includes("evenement") ||
-    typeStr.includes("compét");
+  const isSpecial = /course|compétition|trail|événement|marathon|cross/i.test(
+    s.type || ""
+  );
 
-  // NOUVEAU: Extraction et état local des commentaires
   const sessionComments = commentsData[s.id] || {};
   const commenters = Object.keys(sessionComments).filter(
     (id) => sessionComments[id]
   );
-
   const [localComment, setLocalComment] = useState("");
 
-  // NOUVEAU: Met à jour le champ local si les données distantes changent
   useEffect(() => {
-    if (currentUserProfile) {
+    if (currentUserProfile)
       setLocalComment(commentsData[s.id]?.[currentUserProfile.id] || "");
-    }
   }, [commentsData, s.id, currentUserProfile]);
+
+  // LOGIQUE DES COULEURS (AVEC GRIS SI PAS DE REPONSE)
+  let cardStyle = "bg-white border-slate-300 shadow-inner"; // Par défaut (Gris si pas de réponse)
+  if (isCancelled) {
+    cardStyle = "bg-slate-100 border-slate-300 opacity-80";
+  } else if (isSpecial) {
+    cardStyle = "bg-amber-50 border-amber-400 ring-2 ring-amber-100/50";
+  } else if (myStatus === "present") {
+    cardStyle = "bg-white border-green-500 ring-4 ring-green-50";
+  } else if (myStatus === "absent") {
+    cardStyle = "bg-white border-red-500 ring-4 ring-red-50";
+  } else {
+    // Cas où l'athlète n'a pas répondu et c'est un entraînement normal
+    cardStyle = "bg-slate-50 border-slate-300 shadow-sm opacity-90";
+  }
 
   return (
     <div
-      className={`relative p-6 rounded-[2.5rem] border-l-[8px] transition-all mb-4 overflow-hidden
-      ${
-        isCancelled
-          ? "bg-slate-100 border-slate-300 grayscale opacity-80"
-          : needsResponse
-          ? "bg-slate-200 border-slate-400 opacity-90"
-          : isSpecialEvent
-          ? "bg-gradient-to-br from-amber-50 to-white border-amber-500 shadow-md"
-          : "bg-white border-red-600 shadow-sm"
-      }
-      ${
-        myStatus === "present" && !isCancelled
-          ? "!border-green-500 ring-2 ring-green-100"
-          : ""
-      }
-      ${myStatus === "absent" && !isCancelled ? "!border-red-400" : ""}
-    `}
+      className={`relative p-6 rounded-[2.5rem] border-l-[8px] transition-all mb-4 overflow-hidden ${cardStyle}`}
     >
       {isCancelled && (
         <div className="absolute top-0 right-0 bg-slate-800 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10">
@@ -918,16 +998,23 @@ function SessionCard({
         </div>
       )}
 
-      <div className="flex justify-between items-start mb-2 relative z-0">
+      {/* Badge "A Répondre" si pas de réponse */}
+      {!isCancelled && !myStatus && (
+        <div className="absolute top-0 right-0 bg-slate-400 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10 animate-pulse">
+          À valider
+        </div>
+      )}
+
+      <div className="flex justify-between items-start mb-2">
         <div className="flex-1 pr-2">
           <span
             className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2
             ${
-              isCancelled || needsResponse
+              isCancelled
                 ? "bg-slate-300 text-slate-600"
-                : isSpecialEvent
+                : isSpecial
                 ? "bg-amber-100 text-amber-700"
-                : "bg-red-50 text-red-600"
+                : "bg-slate-200 text-slate-600"
             }
           `}
           >
@@ -935,113 +1022,73 @@ function SessionCard({
           </span>
           <h3
             className={`text-xl font-black leading-tight capitalize ${
-              isCancelled
-                ? "line-through decoration-red-600 decoration-2 text-slate-500"
-                : "text-slate-900"
+              isCancelled ? "line-through text-slate-500" : "text-slate-900"
             }`}
           >
             {formatDate(s.date)}
           </h3>
         </div>
-
-        <div className="flex items-center gap-2">
-          {isAdminAuthenticated && (
-            <button
-              onClick={() => setEditingSession(s)}
-              className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors shadow-sm"
-            >
-              <Edit3 size={14} />
-            </button>
-          )}
-          <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[12px] font-black text-slate-700">
-            {s.time}
-          </div>
+        <div className="bg-slate-100 px-3 py-1.5 rounded-2xl text-[12px] font-black text-slate-700">
+          {s.time}
         </div>
       </div>
 
-      <p className="text-slate-500 text-[11px] font-bold mb-4 uppercase flex items-center gap-1 mt-1">
+      <p className="text-slate-500 text-[11px] font-bold mb-4 uppercase mt-1">
         📍 {s.location}
       </p>
 
       {!isCancelled && (
         <div
           className={`p-4 rounded-3xl text-sm font-medium mb-5 border italic
-          ${
-            needsResponse
-              ? "bg-slate-100 border-slate-300 text-slate-500"
-              : isSpecialEvent
-              ? "bg-amber-50/50 border-amber-100 text-amber-900"
-              : "bg-slate-50 border-slate-100 text-slate-700"
-          }
+            ${
+              isSpecial
+                ? "bg-white/50 border-amber-200 text-amber-900"
+                : "bg-slate-50 border-slate-100 text-slate-700"
+            }
         `}
         >
           {s.description || "Pas de détails."}
         </div>
       )}
 
-      {/* --- STATUT DES PRÉSENCES --- */}
       {!isCancelled && (
-        <div
-          className={`space-y-4 mb-5 border-t pt-4 
-          ${
-            needsResponse
-              ? "border-slate-300"
-              : isSpecialEvent
-              ? "border-amber-100"
-              : "border-slate-100"
-          }`}
-        >
-          {/* COMPTEURS GLOBAUX */}
+        <div className="space-y-4 mb-5 border-t border-slate-100 pt-4">
           <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
             <div className="flex gap-4">
               <span className="text-green-600 flex items-center gap-1">
-                <Check size={12} /> {attendants.length} Présent(s)
+                <Check size={12} /> {attendants.length} Présents
               </span>
               <span className="text-red-500 flex items-center gap-1">
-                <XCircle size={12} /> {absentees.length} Absent(s)
+                <XCircle size={12} /> {absentees.length} Absents
               </span>
             </div>
-            <span className="flex items-center gap-1 text-slate-400">
-              <HelpCircle size={12} /> {noResponseCount} Non rep.
-            </span>
           </div>
 
-          {/* LISTE DES PRÉSENTS */}
           <div>
             <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-              <Users
-                size={12}
-                className={needsResponse ? "text-slate-400" : "text-green-600"}
-              />{" "}
-              Ils viennent :
+              <Users size={12} className="text-green-600" /> Ils viennent :
             </div>
-            <div className="flex flex-wrap gap-1 min-h-[10px]">
-              {attendants.length > 0 ? (
-                attendants.map((a) => (
-                  <span
-                    key={a.id}
-                    className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-green-100"
-                  >
-                    {a.name}
-                  </span>
-                ))
-              ) : (
-                <span className="text-[8px] text-slate-400 italic font-bold">
-                  Personne n'a encore confirmé.
+            <div className="flex flex-wrap gap-1">
+              {attendants.map((a) => (
+                <span
+                  key={a.id}
+                  className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-green-100"
+                >
+                  {a.name}
+                </span>
+              ))}
+              {attendants.length === 0 && (
+                <span className="text-[8px] text-slate-400 italic">
+                  Personne encore.
                 </span>
               )}
             </div>
           </div>
 
-          {/* LISTE DES ABSENTS */}
           {absentees.length > 0 && (
             <div>
               <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-3">
-                <UserMinus
-                  size={12}
-                  className={needsResponse ? "text-slate-400" : "text-red-400"}
-                />{" "}
-                Ils ne viennent pas :
+                <UserMinus size={12} className="text-red-400" /> Absents :
               </div>
               <div className="flex flex-wrap gap-1">
                 {absentees.map((a) => (
@@ -1056,76 +1103,68 @@ function SessionCard({
             </div>
           )}
 
-          {/* NOUVEAU: LISTE DES COMMENTAIRES */}
           {commenters.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
               <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                <MessageSquare size={12} /> Commentaires
+                <MessageSquare size={12} /> Notes :
               </div>
-              <div className="space-y-2">
-                {commenters.map((athId) => {
-                  const athName =
-                    athletes.find((a) => a.id === athId)?.name || "Inconnu";
-                  return (
-                    <div
-                      key={athId}
-                      className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[10px]"
-                    >
-                      <span className="font-black italic uppercase text-slate-700">
-                        {athName} :{" "}
-                      </span>
-                      <span className="font-medium text-slate-600">
-                        {sessionComments[athId]}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              {commenters.map((athId) => {
+                const athName =
+                  athletes.find((a) => a.id === athId)?.name || "Athlète";
+                return (
+                  <div
+                    key={athId}
+                    className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[10px]"
+                  >
+                    <span className="font-black italic uppercase text-slate-700">
+                      {athName} :{" "}
+                    </span>
+                    <span className="font-medium text-slate-600">
+                      {sessionComments[athId]}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* BOUTONS ACTIONS & NOUVEAU CHAMP COMMENTAIRE */}
       {currentUserProfile && !isCancelled ? (
         <div className="mt-4 border-t border-slate-100 pt-4">
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => saveAttendance(s.id, "present")}
-              className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 
-              ${
+              className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 ${
                 myStatus === "present"
                   ? "bg-green-600 text-white shadow-lg shadow-green-200"
-                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-green-50 hover:border-green-100 hover:text-green-600"
+                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-green-50 hover:text-green-600"
               }`}
             >
               <Check size={14} /> Je viens
             </button>
             <button
               onClick={() => saveAttendance(s.id, "absent")}
-              className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95
-              ${
+              className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 ${
                 myStatus === "absent"
                   ? "bg-red-600 text-white shadow-lg shadow-red-200"
-                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-red-50 hover:border-red-100 hover:text-red-600"
+                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-600"
               }`}
             >
               <XCircle size={14} /> Absent
             </button>
           </div>
-
-          {/* NOUVEAU: CHAMP SAISIE COMMENTAIRE */}
           <div className="mt-3 flex gap-2">
             <input
               type="text"
               value={localComment}
               onChange={(e) => setLocalComment(e.target.value)}
-              placeholder="Laisser un commentaire (retard, blessure...)"
-              className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-slate-300 transition-colors"
+              placeholder="Précision (facultatif)..."
+              className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
             />
             <button
               onClick={() => saveComment(s.id, localComment)}
-              className="bg-slate-100 text-slate-500 px-4 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-slate-200 transition-colors active:scale-95"
+              className="bg-slate-100 text-slate-500 px-4 py-3 rounded-xl text-[10px] font-black uppercase hover:bg-slate-200"
             >
               OK
             </button>
@@ -1134,7 +1173,7 @@ function SessionCard({
       ) : (
         isCancelled && (
           <div className="text-center py-2 text-[10px] font-black uppercase text-slate-400 italic bg-slate-200/50 rounded-xl">
-            Pas d'entraînement
+            Séance annulée
           </div>
         )
       )}
