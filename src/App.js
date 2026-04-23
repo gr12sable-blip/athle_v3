@@ -242,22 +242,20 @@ export default function App() {
     setEditingSession(null);
   };
 
-  const updateAthlete = async () => {
-    if (!editingAthlete || !editingAthlete.name.trim()) return;
+  const toggleCancelSession = async (s) => {
     await setDoc(
-      doc(
-        db,
-        "artifacts",
-        CLUB_ID,
-        "public",
-        "data",
-        "members",
-        editingAthlete.id
-      ),
-      { name: editingAthlete.name },
+      doc(db, "artifacts", CLUB_ID, "public", "data", "sessions", s.id),
+      { isCancelled: !s.isCancelled },
       { merge: true }
     );
-    setEditingAthlete(null);
+  };
+
+  const deleteSession = async (id) => {
+    if (window.confirm("Supprimer définitivement cette séance ?")) {
+      await deleteDoc(
+        doc(db, "artifacts", CLUB_ID, "public", "data", "sessions", id)
+      );
+    }
   };
 
   const addAthlete = async () => {
@@ -360,7 +358,7 @@ export default function App() {
     .sort((a, b) => b.date.localeCompare(a.date));
 
   const activeStatuses = Object.entries(globalStatuses)
-    .filter(([id, data]) => athletes.find((a) => a.id === id))
+    .filter(([id]) => athletes.find((a) => a.id === id))
     .map(([id, data]) => ({
       id,
       name: athletes.find((a) => a.id === id).name,
@@ -369,7 +367,7 @@ export default function App() {
 
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center font-black text-red-600 animate-pulse">
+      <div className="min-h-screen flex items-center justify-center font-black text-red-600 animate-pulse uppercase">
         SGS ATHLÉ CHARGEMENT...
       </div>
     );
@@ -418,13 +416,11 @@ export default function App() {
             {activeStatuses.map((s) => (
               <div
                 key={s.id}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight border
-                ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tight border ${
                   s.type === "blessure"
                     ? "bg-red-950/50 text-red-400 border-red-900/50"
                     : "bg-indigo-950/50 text-indigo-300 border-indigo-900/50"
-                }
-              `}
+                }`}
               >
                 {s.type === "blessure" ? (
                   <Bandage size={12} />
@@ -472,6 +468,8 @@ export default function App() {
                     formatDate={formatDate}
                     isAdminAuthenticated={isAdminAuthenticated}
                     setEditingSession={setEditingSession}
+                    toggleCancelSession={toggleCancelSession}
+                    deleteSession={deleteSession}
                   />
                 ))}
               </div>
@@ -481,11 +479,10 @@ export default function App() {
               <section className="mt-8 border-t pt-8">
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className="w-full flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 hover:bg-slate-100 transition-colors"
+                  className="w-full flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500"
                 >
                   <h2 className="text-[10px] font-black uppercase flex items-center gap-2">
-                    <History size={14} /> Historique des séances (
-                    {pastSessions.length})
+                    <History size={14} /> Historique ({pastSessions.length})
                   </h2>
                   {showHistory ? (
                     <ChevronUp size={16} />
@@ -494,7 +491,7 @@ export default function App() {
                   )}
                 </button>
                 {showHistory && (
-                  <div className="space-y-4 mt-4 opacity-70 grayscale-[0.3] animate-in slide-in-from-top-4 duration-300">
+                  <div className="space-y-4 mt-4 opacity-70 grayscale-[0.3]">
                     {pastSessions.map((s) => (
                       <SessionCard
                         key={s.id}
@@ -508,6 +505,8 @@ export default function App() {
                         formatDate={formatDate}
                         isAdminAuthenticated={isAdminAuthenticated}
                         setEditingSession={setEditingSession}
+                        toggleCancelSession={toggleCancelSession}
+                        deleteSession={deleteSession}
                       />
                     ))}
                   </div>
@@ -552,7 +551,7 @@ export default function App() {
                 <input
                   type="password"
                   placeholder="Mot de passe"
-                  className="w-full p-4 rounded-xl bg-slate-50 border-0 text-center font-bold mb-4 outline-none focus:ring-2 ring-red-600"
+                  className="w-full p-4 rounded-xl bg-slate-50 border-0 text-center font-bold outline-none focus:ring-2 ring-red-600"
                   onChange={(e) =>
                     e.target.value === "Coach" && setIsAdminAuthenticated(true)
                   }
@@ -561,13 +560,13 @@ export default function App() {
             ) : (
               <div className="space-y-6 pb-20">
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
-                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">
+                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600">
                     Importer Séances (CSV)
                   </h3>
                   <textarea
                     value={csvInput}
                     onChange={(e) => setCsvInput(e.target.value)}
-                    className="w-full h-24 p-4 bg-slate-50 rounded-xl text-[10px] mb-4 border-0 outline-none font-mono"
+                    className="w-full h-24 p-4 bg-slate-50 rounded-xl text-[10px] mb-4 outline-none font-mono"
                     placeholder="2026-02-12;18:30;Seuil;Stade;Détails..."
                   />
                   <button
@@ -579,8 +578,8 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
-                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest flex items-center gap-2">
-                    <BarChart2 size={14} /> Bilan des Présences
+                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 flex items-center gap-2">
+                    <BarChart2 size={14} /> Présences
                   </h3>
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
                     {athletes
@@ -588,15 +587,13 @@ export default function App() {
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((a) => {
                         let present = 0,
-                          absent = 0,
-                          noRep = 0;
+                          absent = 0;
                         sessions
                           .filter((s) => !s.isCancelled)
                           .forEach((s) => {
-                            const status = attendanceData[s.id]?.[a.id];
-                            if (status === "present") present++;
-                            else if (status === "absent") absent++;
-                            else noRep++;
+                            const st = attendanceData[s.id]?.[a.id];
+                            if (st === "present") present++;
+                            else if (st === "absent") absent++;
                           });
                         return (
                           <div
@@ -613,9 +610,6 @@ export default function App() {
                               <span className="bg-red-100 text-red-700 px-2 py-1.5 rounded-lg flex items-center gap-1">
                                 <XCircle size={10} /> {absent}
                               </span>
-                              <span className="bg-slate-200 text-slate-500 px-2 py-1.5 rounded-lg flex items-center gap-1">
-                                <HelpCircle size={10} /> {noRep}
-                              </span>
                             </div>
                           </div>
                         );
@@ -624,7 +618,7 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-red-100">
-                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600 tracking-widest">
+                  <h3 className="font-black text-[10px] uppercase mb-4 text-red-600">
                     Gestion Groupe
                   </h3>
                   <div className="flex gap-2 mb-4">
@@ -681,88 +675,64 @@ export default function App() {
         )}
       </main>
 
-      {/* MODALES SÉANCE / ATHLÈTE */}
+      {/* MODALE ÉDITION SÉANCE */}
       {editingSession && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <h3 className="font-black uppercase text-red-600 text-xs tracking-widest text-center mb-4">
+          <div className="bg-white w-full max-w-md p-6 rounded-[2rem] space-y-4 shadow-2xl">
+            <h3 className="font-black uppercase text-red-600 text-xs text-center mb-4">
               Modifier la séance
             </h3>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                Date
-              </label>
-              <input
-                type="date"
-                value={editingSession.date}
-                onChange={(e) =>
-                  setEditingSession({ ...editingSession, date: e.target.value })
-                }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
-              />
-            </div>
+            <input
+              type="date"
+              value={editingSession.date}
+              onChange={(e) =>
+                setEditingSession({ ...editingSession, date: e.target.value })
+              }
+              className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
+            />
             <div className="flex gap-2">
-              <div className="flex-1 space-y-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                  Heure
-                </label>
-                <input
-                  type="text"
-                  value={editingSession.time}
-                  onChange={(e) =>
-                    setEditingSession({
-                      ...editingSession,
-                      time: e.target.value,
-                    })
-                  }
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
-                />
-              </div>
-              <div className="flex-1 space-y-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                  Lieu
-                </label>
-                <input
-                  type="text"
-                  value={editingSession.location}
-                  onChange={(e) =>
-                    setEditingSession({
-                      ...editingSession,
-                      location: e.target.value,
-                    })
-                  }
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                Type
-              </label>
               <input
                 type="text"
-                value={editingSession.type}
+                value={editingSession.time}
                 onChange={(e) =>
-                  setEditingSession({ ...editingSession, type: e.target.value })
+                  setEditingSession({ ...editingSession, time: e.target.value })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
+                className="flex-1 p-3 bg-slate-50 rounded-xl font-bold text-sm"
+                placeholder="Heure"
               />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                Description
-              </label>
-              <textarea
-                value={editingSession.description}
+              <input
+                type="text"
+                value={editingSession.location}
                 onChange={(e) =>
                   setEditingSession({
                     ...editingSession,
-                    description: e.target.value,
+                    location: e.target.value,
                   })
                 }
-                className="w-full p-3 bg-slate-50 rounded-xl text-sm h-24 italic"
+                className="flex-1 p-3 bg-slate-50 rounded-xl font-bold text-sm"
+                placeholder="Lieu"
               />
             </div>
+            <input
+              type="text"
+              value={editingSession.type}
+              onChange={(e) =>
+                setEditingSession({ ...editingSession, type: e.target.value })
+              }
+              className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
+              placeholder="Type (Course, Événement...)"
+            />
+            <textarea
+              value={editingSession.description}
+              onChange={(e) =>
+                setEditingSession({
+                  ...editingSession,
+                  description: e.target.value,
+                })
+              }
+              className="w-full p-3 bg-slate-50 rounded-xl text-sm h-24 italic"
+              placeholder="Description"
+            />
             <div className="flex gap-2 pt-2">
               <button
                 onClick={updateSession}
@@ -781,95 +751,54 @@ export default function App() {
         </div>
       )}
 
-      {editingAthlete && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <h3 className="font-black uppercase text-red-600 text-xs tracking-widest text-center mb-4">
-              Corriger le nom
-            </h3>
-            <div className="space-y-1">
-              <input
-                type="text"
-                value={editingAthlete.name}
-                onChange={(e) =>
-                  setEditingAthlete({ ...editingAthlete, name: e.target.value })
-                }
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 text-sm text-center"
-              />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={updateAthlete}
-                className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black uppercase text-[10px]"
-              >
-                Sauvegarder
-              </button>
-              <button
-                onClick={() => setEditingAthlete(null)}
-                className="flex-1 bg-slate-100 py-3 rounded-xl font-black uppercase text-[10px] text-slate-500"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* MODALE STATUT ATHLÈTE */}
       {editingStatus && currentUserProfile && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <h3 className="font-black uppercase text-red-600 text-xs tracking-widest text-center mb-4">
+          <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl">
+            <h3 className="font-black uppercase text-red-600 text-xs text-center mb-4">
               Mon Statut Actuel
             </h3>
-
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2">
               <button
                 onClick={() =>
                   setStatusInput({ ...statusInput, type: "blessure" })
                 }
-                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 ${
                   statusInput.type === "blessure"
                     ? "border-red-500 bg-red-50 text-red-600"
-                    : "border-slate-100 text-slate-400 hover:bg-slate-50"
+                    : "border-slate-100"
                 }`}
               >
                 <Bandage size={20} />{" "}
-                <span className="text-[10px] font-black uppercase">
-                  A l'infirmerie
+                <span className="text-[10px] font-black uppercase tracking-tight">
+                  Blessé
                 </span>
               </button>
               <button
                 onClick={() =>
                   setStatusInput({ ...statusInput, type: "prepa" })
                 }
-                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 ${
                   statusInput.type === "prepa"
                     ? "border-indigo-500 bg-indigo-50 text-indigo-600"
-                    : "border-slate-100 text-slate-400 hover:bg-slate-50"
+                    : "border-slate-100"
                 }`}
               >
                 <Flame size={20} />{" "}
-                <span className="text-[10px] font-black uppercase">
+                <span className="text-[10px] font-black uppercase tracking-tight">
                   En prépa
                 </span>
               </button>
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-2">
-                Précision (Facultatif)
-              </label>
-              <input
-                type="text"
-                value={statusInput.text}
-                onChange={(e) =>
-                  setStatusInput({ ...statusInput, text: e.target.value })
-                }
-                placeholder="ex: Entorse, Marathon de Paris..."
-                className="w-full p-3 bg-slate-50 rounded-xl font-bold border-0 outline-none text-sm"
-              />
-            </div>
-
+            <input
+              type="text"
+              value={statusInput.text}
+              onChange={(e) =>
+                setStatusInput({ ...statusInput, text: e.target.value })
+              }
+              placeholder="ex: Entorse cheville..."
+              className="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm"
+            />
             <div className="flex gap-2 pt-2">
               <button
                 onClick={saveGlobalStatus}
@@ -884,11 +813,10 @@ export default function App() {
                 <X size={16} />
               </button>
             </div>
-
             {globalStatuses[currentUserProfile.id] && (
               <button
                 onClick={removeGlobalStatus}
-                className="w-full mt-2 py-3 rounded-xl font-black uppercase text-[10px] text-red-500 bg-red-50"
+                className="w-full py-3 rounded-xl font-black uppercase text-[10px] text-red-500 bg-red-50"
               >
                 Je suis de retour / En forme
               </button>
@@ -905,15 +833,15 @@ export default function App() {
           <div className="w-px h-4 bg-white/20"></div>
           <button
             onClick={() => {
-              const current = globalStatuses[currentUserProfile.id];
+              const c = globalStatuses[currentUserProfile.id];
               setStatusInput(
-                current
-                  ? { type: current.type, text: current.text }
+                c
+                  ? { type: c.type, text: c.text }
                   : { type: "blessure", text: "" }
               );
               setEditingStatus(true);
             }}
-            className="text-[10px] font-bold text-slate-300 hover:text-white uppercase flex items-center gap-1"
+            className="text-[10px] font-bold text-slate-300 uppercase flex items-center gap-1"
           >
             <Activity size={12} /> Mon Statut
           </button>
@@ -945,6 +873,8 @@ function SessionCard({
   formatDate,
   isAdminAuthenticated,
   setEditingSession,
+  toggleCancelSession,
+  deleteSession,
 }) {
   const validAthletes = athletes.filter((ath) => ath.name);
   const attendants = validAthletes.filter(
@@ -958,9 +888,26 @@ function SessionCard({
     : null;
   const isCancelled = s.isCancelled === true;
 
-  const isSpecial = /course|compétition|trail|événement|marathon|cross/i.test(
-    s.type || ""
+  // LOGIQUE DES COULEURS PAR TYPE
+  const typeLower = (s.type || "").toLowerCase();
+  const isRace = /course|marathon|trail|cross|compétition|competition/i.test(
+    typeLower
   );
+  const isEvent = /événement|evenement/i.test(typeLower);
+
+  let cardStyle = "bg-white border-slate-300 shadow-inner";
+  if (isCancelled) cardStyle = "bg-slate-100 border-slate-300 opacity-80";
+  else if (isRace)
+    cardStyle =
+      "bg-amber-50 border-amber-500 ring-4 ring-amber-100/50"; // JAUNE DORÉ
+  else if (isEvent)
+    cardStyle =
+      "bg-purple-50 border-purple-500 ring-4 ring-purple-100/50"; // VIOLET
+  else if (myStatus === "present")
+    cardStyle = "bg-white border-green-500 ring-4 ring-green-50";
+  else if (myStatus === "absent")
+    cardStyle = "bg-white border-red-500 ring-4 ring-red-50";
+  else cardStyle = "bg-slate-50 border-slate-300 shadow-sm opacity-90";
 
   const sessionComments = commentsData[s.id] || {};
   const commenters = Object.keys(sessionComments).filter(
@@ -973,50 +920,61 @@ function SessionCard({
       setLocalComment(commentsData[s.id]?.[currentUserProfile.id] || "");
   }, [commentsData, s.id, currentUserProfile]);
 
-  // LOGIQUE DES COULEURS (AVEC GRIS SI PAS DE REPONSE)
-  let cardStyle = "bg-white border-slate-300 shadow-inner"; // Par défaut (Gris si pas de réponse)
-  if (isCancelled) {
-    cardStyle = "bg-slate-100 border-slate-300 opacity-80";
-  } else if (isSpecial) {
-    cardStyle = "bg-amber-50 border-amber-400 ring-2 ring-amber-100/50";
-  } else if (myStatus === "present") {
-    cardStyle = "bg-white border-green-500 ring-4 ring-green-50";
-  } else if (myStatus === "absent") {
-    cardStyle = "bg-white border-red-500 ring-4 ring-red-50";
-  } else {
-    // Cas où l'athlète n'a pas répondu et c'est un entraînement normal
-    cardStyle = "bg-slate-50 border-slate-300 shadow-sm opacity-90";
-  }
-
   return (
     <div
       className={`relative p-6 rounded-[2.5rem] border-l-[8px] transition-all mb-4 overflow-hidden ${cardStyle}`}
     >
-      {isCancelled && (
+      {/* BOUTONS COACH */}
+      {isAdminAuthenticated && (
+        <div className="absolute top-2 right-2 flex gap-1 z-20">
+          <button
+            onClick={() => setEditingSession(s)}
+            className="p-2 bg-white/90 shadow-sm rounded-full text-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+          >
+            <Edit3 size={14} />
+          </button>
+          <button
+            onClick={() => toggleCancelSession(s)}
+            className={`p-2 bg-white/90 shadow-sm rounded-full transition-all ${
+              isCancelled
+                ? "text-green-600 hover:bg-green-600"
+                : "text-amber-600 hover:bg-amber-600"
+            } hover:text-white`}
+          >
+            <Ban size={14} />
+          </button>
+          <button
+            onClick={() => deleteSession(s.id)}
+            className="p-2 bg-white/90 shadow-sm rounded-full text-red-600 hover:bg-red-600 hover:text-white transition-all"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )}
+
+      {isCancelled && !isAdminAuthenticated && (
         <div className="absolute top-0 right-0 bg-slate-800 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10">
           Annulé
         </div>
       )}
-
-      {/* Badge "A Répondre" si pas de réponse */}
-      {!isCancelled && !myStatus && (
+      {!isCancelled && !myStatus && !isAdminAuthenticated && (
         <div className="absolute top-0 right-0 bg-slate-400 text-white text-[8px] font-black px-3 py-1 rounded-bl-xl uppercase tracking-widest z-10 animate-pulse">
           À valider
         </div>
       )}
 
       <div className="flex justify-between items-start mb-2">
-        <div className="flex-1 pr-2">
+        <div className="flex-1 pr-12">
           <span
-            className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2
-            ${
+            className={`text-[11px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg inline-block mb-2 ${
               isCancelled
                 ? "bg-slate-300 text-slate-600"
-                : isSpecial
-                ? "bg-amber-100 text-amber-700"
+                : isRace
+                ? "bg-amber-200 text-amber-800"
+                : isEvent
+                ? "bg-purple-200 text-purple-800"
                 : "bg-slate-200 text-slate-600"
-            }
-          `}
+            }`}
           >
             {s.type}
           </span>
@@ -1039,13 +997,11 @@ function SessionCard({
 
       {!isCancelled && (
         <div
-          className={`p-4 rounded-3xl text-sm font-medium mb-5 border italic
-            ${
-              isSpecial
-                ? "bg-white/50 border-amber-200 text-amber-900"
-                : "bg-slate-50 border-slate-100 text-slate-700"
-            }
-        `}
+          className={`p-4 rounded-3xl text-sm font-medium mb-5 border italic ${
+            isRace || isEvent
+              ? "bg-white/50"
+              : "bg-slate-50 border-slate-100 text-slate-700"
+          }`}
         >
           {s.description || "Pas de détails."}
         </div>
@@ -1053,26 +1009,21 @@ function SessionCard({
 
       {!isCancelled && (
         <div className="space-y-4 mb-5 border-t border-slate-100 pt-4">
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <div className="flex gap-4">
-              <span className="text-green-600 flex items-center gap-1">
-                <Check size={12} /> {attendants.length} Présents
-              </span>
-              <span className="text-red-500 flex items-center gap-1">
-                <XCircle size={12} /> {absentees.length} Absents
-              </span>
-            </div>
+          <div className="flex gap-4 text-[10px] font-black uppercase tracking-widest text-slate-400">
+            <span className="text-green-600 flex items-center gap-1">
+              <Check size={12} /> {attendants.length} Présents
+            </span>
+            <span className="text-red-500 flex items-center gap-1">
+              <XCircle size={12} /> {absentees.length} Absents
+            </span>
           </div>
 
           <div>
-            <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-              <Users size={12} className="text-green-600" /> Ils viennent :
-            </div>
             <div className="flex flex-wrap gap-1">
               {attendants.map((a) => (
                 <span
                   key={a.id}
-                  className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-green-100"
+                  className="text-[8px] bg-green-50 text-green-700 px-2.5 py-1.5 rounded-lg font-black uppercase border border-green-100"
                 >
                   {a.name}
                 </span>
@@ -1085,29 +1036,8 @@ function SessionCard({
             </div>
           </div>
 
-          {absentees.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-3">
-                <UserMinus size={12} className="text-red-400" /> Absents :
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {absentees.map((a) => (
-                  <span
-                    key={a.id}
-                    className="text-[8px] bg-red-50 text-red-500 px-2.5 py-1.5 rounded-lg font-black uppercase tracking-tight border border-red-100"
-                  >
-                    {a.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
           {commenters.length > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
-              <div className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                <MessageSquare size={12} /> Notes :
-              </div>
               {commenters.map((athId) => {
                 const athName =
                   athletes.find((a) => a.id === athId)?.name || "Athlète";
@@ -1138,7 +1068,7 @@ function SessionCard({
               className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 ${
                 myStatus === "present"
                   ? "bg-green-600 text-white shadow-lg shadow-green-200"
-                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-green-50 hover:text-green-600"
+                  : "bg-white border-2 border-slate-100 text-slate-400 hover:text-green-600"
               }`}
             >
               <Check size={14} /> Je viens
@@ -1148,7 +1078,7 @@ function SessionCard({
               className={`py-3 rounded-2xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all active:scale-95 ${
                 myStatus === "absent"
                   ? "bg-red-600 text-white shadow-lg shadow-red-200"
-                  : "bg-white border-2 border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  : "bg-white border-2 border-slate-100 text-slate-400 hover:text-red-600"
               }`}
             >
               <XCircle size={14} /> Absent
@@ -1159,7 +1089,7 @@ function SessionCard({
               type="text"
               value={localComment}
               onChange={(e) => setLocalComment(e.target.value)}
-              placeholder="Précision (facultatif)..."
+              placeholder="Note (facultatif)..."
               className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none"
             />
             <button
@@ -1171,7 +1101,8 @@ function SessionCard({
           </div>
         </div>
       ) : (
-        isCancelled && (
+        isCancelled &&
+        !isAdminAuthenticated && (
           <div className="text-center py-2 text-[10px] font-black uppercase text-slate-400 italic bg-slate-200/50 rounded-xl">
             Séance annulée
           </div>
