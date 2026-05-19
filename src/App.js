@@ -33,6 +33,7 @@ import {
   X,
   Trophy,
   Timer,
+  Share2,
 } from "lucide-react";
 
 // ==========================================
@@ -183,7 +184,6 @@ export default function App() {
     };
   }, [user]);
 
-  // Synchronise le formulaire si un statut existe déjà pour l'athlète
   useEffect(() => {
     if (currentUserProfile && globalStatuses[currentUserProfile.id]) {
       setStatusInput({
@@ -725,7 +725,7 @@ export default function App() {
         )}
       </main>
 
-      {/* MODALE ÉDITION STATUT (AJOUTÉE ICI POUR FIXER LE BUG) */}
+      {/* MODALE ÉDITION STATUT */}
       {editingStatus && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm p-6 rounded-[2rem] space-y-4 shadow-2xl animate-in zoom-in duration-200">
@@ -991,6 +991,9 @@ function SessionCard({
   const absentees = validAthletes.filter(
     (ath) => attendanceData[s.id]?.[ath.id] === "absent"
   );
+  const noReply = validAthletes.filter(
+    (ath) => !attendanceData[s.id]?.[ath.id]
+  );
   const myStatus = currentUserProfile
     ? attendanceData[s.id]?.[currentUserProfile.id]
     : null;
@@ -1010,6 +1013,34 @@ function SessionCard({
     cardStyle = "bg-white border-green-500 ring-4 ring-green-50";
   else if (myStatus === "absent")
     cardStyle = "bg-white border-red-500 ring-4 ring-red-50";
+
+  // ==========================================
+  // GÉNÉRATION MESSAGE WHATSAPP
+  // ==========================================
+  const APP_URL = "https://TON-APP.web.app"; // ← remplace par ton URL Firebase
+
+  const shareOnWhatsApp = () => {
+    const presentNames = attendants.map((a) => a.name).join(", ") || "—";
+    const absentNames = absentees.map((a) => a.name).join(", ") || "—";
+    const noReplyNames = noReply.map((a) => a.name).join(", ") || "—";
+
+    const text = `🏃 *SGS ATHLÉ — ${s.type} ${formatDate(s.date)}*
+🕡 ${s.time} | 📍 ${s.location}
+${s.description ? `💪 ${s.description}\n` : ""}
+✅ Présents (${attendants.length}) : ${presentNames}
+❌ Absents (${absentees.length}) : ${absentNames}
+❓ Sans réponse (${noReply.length}) : ${noReplyNames}
+
+👉 Répondez ici : ${APP_URL}`;
+
+    const link = document.createElement("a");
+    link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div
@@ -1076,13 +1107,25 @@ function SessionCard({
       )}
 
       <div className="space-y-4 border-t border-slate-100 pt-4">
-        <div className="flex gap-4 text-[9px] font-black uppercase text-slate-400">
-          <span className="text-green-600 flex items-center gap-1">
-            <Check size={10} /> {attendants.length} Présents
-          </span>
-          <span className="text-red-500 flex items-center gap-1">
-            <XCircle size={10} /> {absentees.length} Absents
-          </span>
+        <div className="flex items-center justify-between">
+          <div className="flex gap-4 text-[9px] font-black uppercase text-slate-400">
+            <span className="text-green-600 flex items-center gap-1">
+              <Check size={10} /> {attendants.length} Présents
+            </span>
+            <span className="text-red-500 flex items-center gap-1">
+              <XCircle size={10} /> {absentees.length} Absents
+            </span>
+          </div>
+          {/* BOUTON WHATSAPP */}
+          {!isCancelled && (
+            <button
+              onClick={shareOnWhatsApp}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] text-white rounded-xl text-[9px] font-black uppercase tracking-wide shadow-sm active:scale-95 transition-transform"
+            >
+              <Share2 size={11} />
+              WhatsApp
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-1">
@@ -1096,7 +1139,6 @@ function SessionCard({
           ))}
         </div>
 
-        {/* LISTE DES ABSENTS */}
         {absentees.length > 0 && (
           <div className="pt-2">
             <div className="text-[8px] font-black uppercase text-slate-400 mb-1 flex items-center gap-1">
