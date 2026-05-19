@@ -1020,18 +1020,31 @@ function SessionCard({
   const APP_URL = "https://athle-v3.vercel.app/"; // ← remplace par ton URL Firebase
 
   const shareOnWhatsApp = () => {
-    const presentNames = attendants.map((a) => a.name).join(", ") || "—";
-    const absentNames = absentees.map((a) => a.name).join(", ") || "—";
-    const noReplyNames = noReply.map((a) => a.name).join(", ") || "—";
+    const presentNames = attendants.map((a) => a.name).join(", ") || "\u2014";
+    const absentNames = absentees.map((a) => a.name).join(", ") || "\u2014";
+    const noReplyNames = noReply.map((a) => a.name).join(", ") || "\u2014";
 
-    const text = `🏃 *SGS ATHLÉ — ${s.type} ${formatDate(s.date)}*
-🕡 ${s.time} | 📍 ${s.location}
-${s.description ? `💪 ${s.description}\n` : ""}
-✅ Présents (${attendants.length}) : ${presentNames}
-❌ Absents (${absentees.length}) : ${absentNames}
-❓ Sans réponse (${noReply.length}) : ${noReplyNames}
+    const e = {
+      run: "\uD83C\uDFC3",
+      clock: "\uD83D\uDD61",
+      pin: "\uD83D\uDCCD",
+      muscle: "\uD83D\uDCAA",
+      check: "\u2705",
+      cross: "\u274C",
+      question: "\u2753",
+      point: "\uD83D\uDC49",
+    };
 
-👉 Répondez ici : ${APP_URL}`;
+    const text = `${e.run} *SGS ATHL\u00C9 \u2014 ${s.type} ${formatDate(
+      s.date
+    )}*
+${e.clock} ${s.time} | ${e.pin} ${s.location}
+${s.description ? `${e.muscle} ${s.description}\n` : ""}
+${e.check} Pr\u00E9sents (${attendants.length}) : ${presentNames}
+${e.cross} Absents (${absentees.length}) : ${absentNames}
+${e.question} Sans r\u00E9ponse (${noReply.length}) : ${noReplyNames}
+
+${e.point} R\u00E9pondez ici : ${APP_URL}`;
 
     const link = document.createElement("a");
     link.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
