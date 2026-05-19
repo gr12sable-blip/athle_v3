@@ -1017,7 +1017,7 @@ function SessionCard({
   // ==========================================
   // GÉNÉRATION MESSAGE WHATSAPP
   // ==========================================
-  const APP_URL = "https://TON-APP.web.app"; // ← remplace par ton URL Firebase
+  const APP_URL = https://athle-v3.vercel.app/; // ← remplace par ton URL Firebase
 
   const shareOnWhatsApp = () => {
     const presentNames = attendants.map((a) => a.name).join(", ") || "—";
