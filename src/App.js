@@ -1025,20 +1025,21 @@ function SessionCard({
     const noReplyNames = noReply.map((a) => a.name).join(", ") || "\u2014";
 
     const e = {
-      run: "\uD83C\uDFC3",
-      clock: "\uD83D\uDD61",
-      pin: "\uD83D\uDCCD",
-      muscle: "\uD83D\uDCAA",
-      check: "\u2705",
-      cross: "\u274C",
-      question: "\u2753",
-      point: "\uD83D\uDC49",
+      run: "\u{1F3C3}", // 🏃
+      clock: "\u{1F561}", // 🕡
+      pin: "\u{1F4CD}", // 📍
+      muscle: "\u{1F4AA}", // 💪
+      check: "\u{2705}", // ✅
+      cross: "\u{274C}", // ❌
+      question: "\u{2753}", // ❓
+      point: "\u{1F449}", // 👉
     };
 
     const text = `${e.run} *SGS ATHL\u00C9 \u2014 ${s.type} ${formatDate(
       s.date
     )}*
-${e.clock} ${s.time} | ${e.pin} ${s.location}
+${e.clock} ${s.time}
+${e.pin} ${s.location}
 ${s.description ? `${e.muscle} ${s.description}\n` : ""}
 ${e.check} Pr\u00E9sents (${attendants.length}) : ${presentNames}
 ${e.cross} Absents (${absentees.length}) : ${absentNames}
